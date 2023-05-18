@@ -63,7 +63,7 @@ PreparePackage ()
 
     # Install package dependencies
     sudo chmod a+x ./codePack/$pack_name/install_dependencies.sh
-    ./install_dependencies.sh
+    . ./codePack/$pack_name/install_dependencies.sh
 
     # Store selected module name into .modulename file
     touch .modulename
@@ -80,7 +80,7 @@ PreparePackage ()
     fi
     
     # Modify run.sh by adding specific $pack_name source_env.txt and docker run process
-    cat source_env.txt >> run.sh
+    cat ./codePack/$pack_name/source_env.txt >> run.sh
     echo "source $ros2_ws_dir/install/setup.bash" >> run.sh
     if [ "$ros_distro" == "eloquent" ]
     then
@@ -154,8 +154,8 @@ InstallPackages ()
     # Copy packages into src under ros2 workspace
     rm -rf $ros2_ws_dir/src/$pack_name
     rm -rf $ros2_ws_dir/src/vehicle_interfaces
-    cp codePack/$pack_name $ros2_ws_dir/src
-    cp codePack/vehicle_interfaces $ros2_ws_dir/src
+    cp -rv codePack/$pack_name $ros2_ws_dir/src
+    cp -rv codePack/vehicle_interfaces $ros2_ws_dir/src
     rm -rf $ros2_ws_dir/run.sh && cp run.sh $ros2_ws_dir/run.sh
 
     # Change directory to ROS2 workspace
@@ -299,7 +299,7 @@ if [ "$pack_name" != "NONE" ]
 then
     echo "Preparing package..."
     PreparePackage
-    InstallDockerfile
+    InstallPackages
     EnvSetting
 else
     echo "Process ended."

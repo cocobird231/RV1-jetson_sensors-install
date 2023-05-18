@@ -25,6 +25,15 @@ then
     mkdir -p $HOME/ros2_ws/src
     echo "Created ROS2 workspace at $HOME/ros2_ws."
 else
+    # Check Internet Connection
+    printf "%s" "Internet connecting..."
+    while ! ping -w 1 -c 1 -n 168.95.1.1 &> /dev/null
+    do
+        printf "%c" "."
+    done
+    printf "\n%s\n" "Internet connected."
+
+    # Install ROS2
     echo "ROS2 distro $ros_distro not found. Installing..."
     if [ "$ros_distro" == "eloquent" ]
     then
