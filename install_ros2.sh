@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+ros2_ws_dir="$HOME/ros2_ws"
+
 # Check Ubuntu release
 ubuntu_ver=$(lsb_release -a | grep Release | grep -Po '[\d.]+')
 if [ "$ubuntu_ver" == "18.04" ]
@@ -22,8 +24,13 @@ echo "Corresponding ROS2 distro: $ros_distro"
 if source /opt/ros/$ros_distro/setup.bash &> /dev/null
 then
     echo "ROS2 distro $ros_distro already installed."
-    mkdir -p $HOME/ros2_ws/src
-    echo "Created ROS2 workspace at $HOME/ros2_ws."
+    if ls $ros2_ws_dir/src &> /dev/null
+    then
+        echo "Found ROS2 workspace: $ros2_ws_dir"
+    else
+        mkdir -p $ros2_ws_dir/src
+        echo "Create ROS2 workspace at $ros2_ws_dir"
+    fi
 else
     # Check Internet Connection
     printf "%s" "Internet connecting..."

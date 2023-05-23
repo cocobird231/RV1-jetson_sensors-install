@@ -1,10 +1,37 @@
 #!/usr/bin/bash
+target_dir="$HOME/jetson_sensors"
+ros2_ws_dir="$HOME/ros2_ws"
+
+PARSER_UPDATE="NONE"
+PARSER_INSTALL="NONE"
+pack_name="NONE"
+static_ip="NONE"
+interface="eth0"
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     -e|--extension)
       EXTENSION="$2"
       shift # past argument
       shift # past value
+      ;;
+    -i|--install)
+      PARSER_INSTALL="install"
+      pack_name="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    --reinstall)
+      PARSER_INSTALL="reinstall"
+      shift # past argument
+      ;;
+    --forced_update)
+      PARSER_UPDATE="forced_update"
+      shift # past argument
+      ;;
+    --preserved_update)
+      PARSER_UPDATE="preserved_update"
+      shift # past argument
       ;;
     -*|--*)
       echo "Unknown option $1"
@@ -16,8 +43,79 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-target_dir="$HOME/jetson_sensors"
-ros2_ws_dir="$HOME/ros2_ws"
+CheckCurrentModule ()
+{
+    # Check pwd
+    if [ "$PWD" == "$target_dir" ]
+    then
+        echo "In $target_dir"
+    else
+        if ls $target_dir &> /dev/null
+        then
+            cd $target_dir
+            echo "Change directory: $PWD"
+        else
+            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
+            exit 1
+        fi
+    fi
+    # pwd in ~/jetson_sensors
+
+    # Check previous module setting
+    if cat .modulename &> /dev/null
+    then
+        pack_name=$(cat .modulename)
+        echo "Found module name: $pack_name"
+    else
+        echo ".modulename not found. Run install.sh and select number to install module."
+        exit 1
+    fi
+
+    if cat .moduleinterface &> /dev/null
+    then
+        interface=$(cat .moduleinterface)
+        echo "Found module interface: $interface"
+    else
+        echo ".moduleinterface not found. Run install.sh and select number to install module."
+        exit 1
+    fi
+    
+    if cat .moduleip &> /dev/null
+    then
+        static_ip=$(cat .moduleip)
+        echo "Found module ip: $static_ip"
+    else
+        echo ".moduleip not found. Run install.sh and select number to install module."
+        exit 1
+    fi
+}
+
+SaveCurrentModule ()
+{
+    # Check pwd
+    if [ "$PWD" == "$target_dir" ]
+    then
+        echo "In $target_dir"
+    else
+        if ls $target_dir &> /dev/null
+        then
+            cd $target_dir
+            echo "Change directory: $PWD"
+        else
+            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
+            exit 1
+        fi
+    fi
+    # pwd in ~/jetson_sensors
+
+    # Store selected module name, interface and ip into files
+    touch .modulename
+    echo $pack_name > .modulename
+    touch .moduleinterface
+    echo $interface > .moduleinterface
+    touch .moduleip
+    echo $static_ip > .moduleip
+}
 
 PreparePackage ()
 {
@@ -61,35 +159,6 @@ PreparePackage ()
         ./install_ros2.sh
     fi
 
-    # Install package dependencies
-    sudo chmod a+x ./codePack/$pack_name/install_dependencies.sh
-    . ./codePack/$pack_name/install_dependencies.sh
-
-    # Store selected module name into .modulename file
-    touch .modulename
-    echo $pack_name > .modulename
-
-    # Recover run.sh if .tmp exist
-    if cat run.sh.tmp &> /dev/null
-    then
-        cp run.sh.tmp run.sh
-        echo "run.sh recovered"
-    else
-        cp run.sh run.sh.tmp
-        echo "Backup run.sh: run.sh.tmp"
-    fi
-    
-    # Modify run.sh by adding specific $pack_name source_env.txt and docker run process
-    cat ./codePack/$pack_name/source_env.txt >> run.sh
-    echo "source $ros2_ws_dir/install/setup.bash" >> run.sh
-    if [ "$ros_distro" == "eloquent" ]
-    then
-        echo "ros2 launch $pack_name launch_eloquent.py" >> run.sh
-    else
-        echo "ros2 launch $pack_name launch.py" >> run.sh
-    fi
-    sudo chmod a+x run.sh
-
     # Network Interface Selection
     echo "Enter network interface (default eth0):"
     read interface
@@ -117,11 +186,8 @@ PreparePackage ()
     fi
     echo "Static IP: $static_ip"
 
-    # Stored selected interface and ip
-    touch .moduleinterface
-    echo $interface > .moduleinterface
-    touch .moduleip
-    echo $static_ip > .moduleip
+    # Save module info
+    SaveCurrentModule
 }
 
 InstallPackages ()
@@ -142,13 +208,38 @@ InstallPackages ()
     fi
     # pwd in ~/jetson_sensors
 
+    # Install package dependencies
+    sudo chmod a+x ./codePack/$pack_name/install_dependencies.sh
+    . ./codePack/$pack_name/install_dependencies.sh
+
+    # Recover run.sh if .tmp exist
+    if cat run.sh.tmp &> /dev/null
+    then
+        cp run.sh.tmp run.sh
+        echo "run.sh recovered"
+    else
+        cp run.sh run.sh.tmp
+        echo "Backup run.sh: run.sh.tmp"
+    fi
+    
+    # Modify run.sh by adding specific $pack_name source_env.txt and docker run process
+    cat ./codePack/$pack_name/source_env.txt >> run.sh
+    echo "source $ros2_ws_dir/install/setup.bash" >> run.sh
+    if [ "$ros_distro" == "eloquent" ]
+    then
+        echo "ros2 launch $pack_name launch_eloquent.py" >> run.sh
+    else
+        echo "ros2 launch $pack_name launch.py" >> run.sh
+    fi
+    sudo chmod a+x run.sh
+
     # Check ROS2 workspace
     if ls $ros2_ws_dir/src &> /dev/null
     then
         echo "Found ROS2 workspace: $ros2_ws_dir"
     else
         mkdir -p $ros2_ws_dir/src
-        echo "Created ROS2 workspace: $ros2_ws_dir/src"
+        echo "Create ROS2 workspace at $ros2_ws_dir/src"
     fi
 
     # Copy packages into src under ros2 workspace
@@ -158,12 +249,12 @@ InstallPackages ()
     cp -rv codePack/vehicle_interfaces $ros2_ws_dir/src
     rm -rf $ros2_ws_dir/run.sh && cp run.sh $ros2_ws_dir/run.sh
 
+    # Link ros2 workspace common.yaml file to ~/jetson_sensors for convenient modifying
+    rm -rf common.yaml && ln $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
+
     # Change directory to ROS2 workspace
     cd $ros2_ws_dir
     echo "Change directory: $PWD"
-
-    # Link common.yaml file to ~/ros_ws for convenient modifying
-    rm -rf common.yaml && ln src/$pack_name/launch/common.yaml common.yaml
 
     # Install package
     source /opt/ros/$ros_distro/setup.bash
@@ -236,39 +327,31 @@ to grab git controlled directory."
         exit 1
     fi
 
+    # Ask if preserve common.yaml file
+    echo "Preserve current common.yaml file ?(y/n):"
+    read selectNum
+    if [ "$selectNum" == "y" ]
+    then
+        # Check previous module setting
+        if cat .modulename &> /dev/null
+        then
+            pack_name=$(cat .modulename)
+            cp codePack/$pack_name/launch/common.yaml common.yaml.tmp
+        else
+            echo ".modulename not found. common.yaml will not preserved."
+            selectNum="n"
+        fi
+    fi
+
     # Update submodules
     git submodule update --remote --recursive --force
 
-    # Check previous module setting
-    if cat .modulename &> /dev/null
+    # Recovering common.yaml
+    if [ "$selectNum" == "y" ]
     then
-        pack_name=$(cat .modulename)
-        echo "Found module name: $pack_name"
-    else
-        echo ".modulename not found. Run install.sh and select number to install module."
-        exit 1
+        mv common.yaml.tmp codePack/$pack_name/launch/common.yaml
+        echo "common.yaml recovered."
     fi
-
-    if cat .moduleinterface &> /dev/null
-    then
-        interface=$(cat .moduleinterface)
-        echo "Found module interface: $interface"
-    else
-        echo ".moduleinterface not found. Run install.sh and select number to install module."
-        exit 1
-    fi
-    
-    if cat .moduleip &> /dev/null
-    then
-        static_ip=$(cat .moduleip)
-        echo "Found module ip: $static_ip"
-    else
-        echo ".moduleip not found. Run install.sh and select number to install module."
-        exit 1
-    fi
-
-    # Update module
-    InstallPackages
 }
 
 ## Install Menu
@@ -290,6 +373,8 @@ then
     echo "Updating module..."
     pack_name="NONE"
     UpdateCodePack
+    CheckCurrentModule
+    InstallPackages
     pack_name="NONE"
 else
     pack_name="NONE"
