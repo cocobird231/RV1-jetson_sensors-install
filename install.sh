@@ -224,6 +224,7 @@ InstallPackages ()
     
     # Modify run.sh by adding specific $pack_name source_env.txt and docker run process
     cat ./codePack/$pack_name/source_env.txt >> run.sh
+    echo "cd $ros2_ws_dir" >> run.sh
     echo "source $ros2_ws_dir/install/setup.bash" >> run.sh
     if [ "$ros_distro" == "eloquent" ]
     then
@@ -267,7 +268,7 @@ EnvSetting ()
     rm -rf ros2_startup.desktop.tmp && touch ros2_startup.desktop.tmp
     echo "[Desktop Entry]" >> ros2_startup.desktop.tmp
     echo "Type=Application" >> ros2_startup.desktop.tmp
-    echo "Exec=gnome-terminal --command '/home/pi/runcontrolros.sh'" >> ros2_startup.desktop.tmp
+    echo "Exec=gnome-terminal --command '$ros2_ws_dir/run.sh'" >> ros2_startup.desktop.tmp
     echo "Hidden=false" >> ros2_startup.desktop.tmp
     echo "NoDisplay=false" >> ros2_startup.desktop.tmp
     echo "X-GNOME-Autostart-enabled=true" >> ros2_startup.desktop.tmp
