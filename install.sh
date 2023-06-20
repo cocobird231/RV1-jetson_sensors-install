@@ -268,7 +268,7 @@ EnvSetting ()
     rm -rf ros2_startup.desktop.tmp && touch ros2_startup.desktop.tmp
     echo "[Desktop Entry]" >> ros2_startup.desktop.tmp
     echo "Type=Application" >> ros2_startup.desktop.tmp
-    echo "Exec=gnome-terminal --command '$ros2_ws_dir/run.sh'" >> ros2_startup.desktop.tmp
+    echo "Exec=gnome-terminal --command '$ros2_ws_dir/run.sh $interface'" >> ros2_startup.desktop.tmp
     echo "Hidden=false" >> ros2_startup.desktop.tmp
     echo "NoDisplay=false" >> ros2_startup.desktop.tmp
     echo "X-GNOME-Autostart-enabled=true" >> ros2_startup.desktop.tmp
@@ -337,7 +337,7 @@ to grab git controlled directory."
         if cat .modulename &> /dev/null
         then
             pack_name=$(cat .modulename)
-            cp codePack/$pack_name/launch/common.yaml common.yaml.tmp
+            cp $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml.tmp
         else
             echo ".modulename not found. common.yaml will not preserved."
             selectNum="n"
