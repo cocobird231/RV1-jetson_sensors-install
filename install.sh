@@ -148,6 +148,43 @@ PreparePackage ()
         ros_distro="humble"
     fi
 
+    # Check cmake version
+    req_cmake_ver=3.16
+    install_cmake=0
+    if cmake --version &> /dev/null
+    then
+        cur_cmake_ver=$(cmake --version | grep -Po '(\d+.)+\d+')
+        vercomp $cur_cmake_ver $req_cmake_ver
+        case $? in
+            0) op='=';;
+            1) op='>';;
+            2) op='<';;
+        esac
+        if [[ $op == '<' ]]
+        then
+            echo "cmake version does not fit the minimum required version: $req_cmake_ver"
+            install_cmake=1
+        fi
+        echo "cmake version: $cur_cmake_ver $op $req_cmake_ver"
+    else
+        echo "cmake not found."
+        install_cmake=1
+    fi
+
+    # Install cmake if needed
+    if [[ $install_cmake != 0 ]]
+    then
+        echo "Installing cmake..."
+        sudo apt update
+        sudo apt install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+        wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
+        if [ "$ubuntu_ver" == "18.04" ]
+        then
+            sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
+        fi
+        sudo apt update && sudo apt install -y cmake
+    fi
+
     # Check ROS2
     if source /opt/ros/$ros_distro/setup.bash &> /dev/null
     then
@@ -170,7 +207,7 @@ PreparePackage ()
         echo "Default interface: $interface"
     fi
 
-    # Network IP Selection
+    # Network IP selection
     echo "Use DHCP? (y/n):"
     read static_ip
     if [[ "$static_ip" == "y" || "$static_ip" == "Y" ]]
