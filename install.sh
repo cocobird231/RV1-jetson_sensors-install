@@ -9,39 +9,108 @@ static_ip="NONE"
 interface="eth0"
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    -e|--extension)
-      EXTENSION="$2"
-      shift # past argument
-      shift # past value
-      ;;
-    -i|--install)
-      PARSER_INSTALL="install"
-      pack_name="$2"
-      shift # past argument
-      shift # past value
-      ;;
-    --reinstall)
-      PARSER_INSTALL="reinstall"
-      shift # past argument
-      ;;
-    --forced_update)
-      PARSER_UPDATE="forced_update"
-      shift # past argument
-      ;;
-    --preserved_update)
-      PARSER_UPDATE="preserved_update"
-      shift # past argument
-      ;;
-    -*|--*)
-      echo "Unknown option $1"
-      exit 0
-      ;;
+    case $1 in
+        -i|--install)
+            PARSER_INSTALL="install"
+            pack_name="$2"
+            shift # past argument
+            shift # past value
+            ;;
+        --interface)
+            interface="$2"
+            shift # past argument
+            shift # past value
+            ;;
+        --ip)
+            static_ip="$2"
+            shift # past argument
+            shift # past value
+            ;;
+        --remove)
+            PARSER_INSTALL="remove"
+            shift # past argument
+            ;;
+        --force-update)
+            PARSER_UPDATE="force-update"
+            shift # past argument
+            ;;
+        --preserve-update)
+            PARSER_UPDATE="preserve-update"
+            shift # past argument
+            ;;
+        -*|--*)
+            echo "Unknown option $1"
+            exit 0
+            ;;
     *)
       shift # past argument
       ;;
   esac
 done
+
+CheckParser ()
+{
+    # Check Internet Connection
+    printf "%s" "Internet connecting..."
+    while ! ping -w 1 -c 1 -n 168.95.1.1 &> /dev/null
+    do
+        printf "%c" "."
+    done
+    printf "\n%s\n" "Internet connected."
+
+    # Check pwd
+    if [ "$PWD" == "$target_dir" ]
+    then
+        echo "In $target_dir"
+    else
+        if ls $target_dir &> /dev/null
+        then
+            cd $target_dir
+            echo "Change directory: $PWD"
+        else
+            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
+            exit 1
+        fi
+    fi
+    # pwd in ~/jetson_sensors
+
+    # Update
+    if [ "$PARSER_UPDATE" == "force-update" ]
+    then
+        CheckCurrentModule
+        git submodule update --init --remote --recursive --force
+        CheckRequirements
+        InstallPackages
+    elif [ "$PARSER_UPDATE" == "preserve-update" ]
+    then
+        CheckCurrentModule
+        cp codePack/$pack_name/launch/common.yaml common.yaml.tmp
+        git submodule update --init --remote --recursive --force
+        mv common.yaml.tmp codePack/$pack_name/launch/common.yaml
+        CheckRequirements
+        InstallPackages
+    fi
+
+    if [ "$PARSER_INSTALL" == "remove" ]
+    then
+        # Get current module info
+        # CheckCurrentModule
+        # Install
+        # InstallPackages
+        # Environment setting
+        # EnvSetting
+        Remove
+    elif [ "$PARSER_INSTALL" == "install" ]
+    then
+        # Save module info
+        SaveCurrentModule
+        # Install
+        CheckRequirements
+        InstallPackages
+        # Environment setting
+        EnvSetting
+    fi
+}
 
 vercomp ()
 {
@@ -73,6 +142,70 @@ vercomp ()
         fi
     done
     return 0
+}
+
+CheckRequirements ()
+{
+    # Check Ubuntu release
+    ubuntu_ver=$(lsb_release -a | grep Release | grep -Po '[\d.]+')
+    if [ "$ubuntu_ver" == "18.04" ]
+    then
+        ros_distro="eloquent"
+    elif [ "$ubuntu_ver" == "20.04" ]
+    then
+        ros_distro="foxy"
+    elif [ "$ubuntu_ver" == "22.04" ]
+    then
+        ros_distro="humble"
+    fi
+
+    # Check cmake version
+    req_cmake_ver=3.16
+    install_cmake=0
+    if cmake --version &> /dev/null
+    then
+        cur_cmake_ver=$(cmake --version | grep -Po '(\d+.)+\d+')
+        vercomp $cur_cmake_ver $req_cmake_ver
+        case $? in
+            0) op='=';;
+            1) op='>';;
+            2) op='<';;
+        esac
+        if [[ $op == '<' ]]
+        then
+            echo "cmake version does not fit the minimum required version: $req_cmake_ver"
+            install_cmake=1
+        fi
+        echo "cmake version: $cur_cmake_ver $op $req_cmake_ver"
+    else
+        echo "cmake not found."
+        install_cmake=1
+    fi
+
+    # Install cmake if needed
+    if [[ $install_cmake != 0 ]]
+    then
+        echo "Installing cmake..."
+        sudo apt update
+        sudo apt install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+        wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
+        if [ "$ubuntu_ver" == "18.04" ]
+        then
+            sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
+        fi
+        sudo apt update && sudo apt install -y cmake
+    fi
+
+    # Check ROS2
+    if source /opt/ros/$ros_distro/setup.bash &> /dev/null
+    then
+        mkdir -p $ros2_ws_dir/src
+        echo "Found ROS2 distro: $ros_distro."
+    else
+        echo "Source ROS2 distro $ros_distro error. Installing ROS2..."
+        sudo chmod a+x ./install_ros2.sh
+        ./install_ros2.sh
+    fi
 }
 
 CheckCurrentModule ()
@@ -151,6 +284,7 @@ SaveCurrentModule ()
 
 PreparePackage ()
 {
+    echo "===Prepare Packages==="
     # Check pwd
     if [ "$PWD" == "$target_dir" ]
     then
@@ -167,66 +301,8 @@ PreparePackage ()
     fi
     # pwd in ~/jetson_sensors
 
-    # Check Ubuntu release
-    ubuntu_ver=$(lsb_release -a | grep Release | grep -Po '[\d.]+')
-    if [ "$ubuntu_ver" == "18.04" ]
-    then
-        ros_distro="eloquent"
-    elif [ "$ubuntu_ver" == "20.04" ]
-    then
-        ros_distro="foxy"
-    elif [ "$ubuntu_ver" == "22.04" ]
-    then
-        ros_distro="humble"
-    fi
-
-    # Check cmake version
-    req_cmake_ver=3.16
-    install_cmake=0
-    if cmake --version &> /dev/null
-    then
-        cur_cmake_ver=$(cmake --version | grep -Po '(\d+.)+\d+')
-        vercomp $cur_cmake_ver $req_cmake_ver
-        case $? in
-            0) op='=';;
-            1) op='>';;
-            2) op='<';;
-        esac
-        if [[ $op == '<' ]]
-        then
-            echo "cmake version does not fit the minimum required version: $req_cmake_ver"
-            install_cmake=1
-        fi
-        echo "cmake version: $cur_cmake_ver $op $req_cmake_ver"
-    else
-        echo "cmake not found."
-        install_cmake=1
-    fi
-
-    # Install cmake if needed
-    if [[ $install_cmake != 0 ]]
-    then
-        echo "Installing cmake..."
-        sudo apt update
-        sudo apt install -y apt-transport-https ca-certificates gnupg software-properties-common wget
-        wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
-        if [ "$ubuntu_ver" == "18.04" ]
-        then
-            sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
-        fi
-        sudo apt update && sudo apt install -y cmake
-    fi
-
-    # Check ROS2
-    if source /opt/ros/$ros_distro/setup.bash &> /dev/null
-    then
-        mkdir -p $ros2_ws_dir/src
-        echo "Found ROS2 distro: $ros_distro."
-    else
-        echo "Source ROS2 distro $ros_distro error. Installing ROS2..."
-        sudo chmod a+x ./install_ros2.sh
-        ./install_ros2.sh
-    fi
+    # Check Ubuntu ver, CMake ver and ROS2 distro
+    CheckRequirements
 
     # Network Interface Selection
     echo "Enter network interface (default eth0):"
@@ -261,6 +337,7 @@ PreparePackage ()
 
 InstallPackages ()
 {
+    echo "===Install Process==="
     # Check pwd
     if [ "$PWD" == "$target_dir" ]
     then
@@ -333,6 +410,7 @@ InstallPackages ()
 
 EnvSetting ()
 {
+    echo "===Environment Setting==="
     # Create ros2_startup.desktop file
     rm -rf ros2_startup.desktop.tmp && touch ros2_startup.desktop.tmp
     echo "[Desktop Entry]" >> ros2_startup.desktop.tmp
@@ -353,6 +431,7 @@ EnvSetting ()
 
 UpdateCodePack ()
 {
+    echo "===Update Process==="
     # Check Internet Connection
     printf "%s" "Internet connecting..."
     while ! ping -w 1 -c 1 -n 168.95.1.1 &> /dev/null
@@ -391,9 +470,9 @@ UpdateCodePack ()
         echo "git control checked."
     else
         echo "git control not found. \
-Delete jetson_sensors directory and run \
-'cd ~ && git clone https://github.com/cocobird231/RobotVehicle-1.0-ROS2-jetson_sensors.git jetson_sensors' \
-to grab git controlled directory."
+    Delete jetson_sensors directory and run \
+    'cd ~ && git clone https://github.com/davidweitaiwan/RV-1.0-jetson_sensors-install.git jetson_sensors' \
+    to grab git controlled directory."
         exit 1
     fi
 
@@ -423,6 +502,49 @@ to grab git controlled directory."
         echo "common.yaml recovered."
     fi
 }
+
+Remove ()
+{
+    echo "===Remove Process==="
+    # Check pwd
+    if [ "$PWD" == "$target_dir" ]
+    then
+        echo "In $target_dir"
+    else
+        if ls $target_dir &> /dev/null
+        then
+            cd $target_dir
+            echo "Change directory: $PWD"
+        else
+            echo "ros2_docker path error. Please copy ros2_docker directory under $HOME"
+            exit 1
+        fi
+    fi
+    # pwd in ~/ros2_docker
+    
+    # Target files
+    rm -rf common.yaml
+    rm -rf ros2_startup.desktop.tmp
+    rm -rf .module*
+    
+    # Recover run.sh if .tmp exist
+    if cat run.sh.tmp &> /dev/null
+    then
+        mv run.sh.tmp run.sh
+        echo "run.sh recovered"
+    fi
+    
+    # System files
+    sudo rm -rf /etc/xdg/autostart/ros2_startup.desktop
+
+    exit 0
+}
+
+CheckParser
+if [ "$pack_name" != "NONE" ]
+then
+    exit 0
+fi
 
 ## Install Menu
 echo "################################################"
