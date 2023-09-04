@@ -147,7 +147,7 @@ vercomp ()
 CheckRequirements ()
 {
     # Check Ubuntu release
-    ubuntu_ver=$(lsb_release -a | grep Release | grep -Po '[\d.]+')
+    ubuntu_ver=$(lsb_release -r | grep Release | grep -Po '[\d.]+')
     if [ "$ubuntu_ver" == "18.04" ]
     then
         ros_distro="eloquent"
