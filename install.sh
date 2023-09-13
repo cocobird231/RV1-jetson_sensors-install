@@ -2,19 +2,47 @@
 target_dir="$HOME/jetson_sensors"
 ros2_ws_dir="$HOME/ros2_ws"
 
-PARSER_UPDATE="NONE"
-PARSER_INSTALL="NONE"
+PARSER_USED="FALSE" # Is parser used
+PARSER_REMOVE="FALSE" # Remove current program and settings
+PARSER_UPDATE="FALSE" # Update codePack, no install
+PARSER_INSTALL="FALSE" # Install program from codePack
+
+preserve_conf="FALSE" # Preserve current common.yaml file while installing
 pack_name="NONE"
 static_ip="NONE"
 interface="eth0"
 
+
+# Parser process orders
+# 1.    PARSER_REMOVE       remove program under ros2_ws and environment settings
+# 2.    PARSER_UPDATE       update codePack without installation
+# 3.    PARSER_INSTALL      install program from codePack to ros2_ws
+#       --preserve          preserve common.yaml under ros2_ws while installing
+#       --interface         set network interface
+#       --ip                set static ip (not supported)
+
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -i|--install)
-            PARSER_INSTALL="install"
-            pack_name="$2"
+        -rm|--remove) # Can be worked independently
+            PARSER_REMOVE="TRUE"
+            PARSER_USED="TRUE"
+            shift # past argument
+            ;;
+        -u|--update) # Can be worked independently
+            PARSER_UPDATE="TRUE"
+            PARSER_USED="TRUE"
+            shift # past argument
+            ;;
+        -i|--install) # Can be worked independently
+            PARSER_INSTALL="TRUE"
+            PARSER_USED="TRUE"
+            pack_name="$2" # <pack_name> or auto
             shift # past argument
             shift # past value
+            ;;
+        -p|--preserve)
+            preserve_conf="TRUE"
+            shift # past argument
             ;;
         --interface)
             interface="$2"
@@ -26,18 +54,6 @@ while [[ $# -gt 0 ]]; do
             shift # past argument
             shift # past value
             ;;
-        --remove)
-            PARSER_INSTALL="remove"
-            shift # past argument
-            ;;
-        --force-update)
-            PARSER_UPDATE="force-update"
-            shift # past argument
-            ;;
-        --preserve-update)
-            PARSER_UPDATE="preserve-update"
-            shift # past argument
-            ;;
         -*|--*)
             echo "Unknown option $1"
             exit 0
@@ -48,68 +64,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CheckParser ()
+function PrintError () # Red
 {
-    # Check Internet Connection
-    printf "%s" "Internet connecting..."
-    while ! ping -w 1 -c 1 -n 168.95.1.1 &> /dev/null
-    do
-        printf "%c" "."
-    done
-    printf "\n%s\n" "Internet connected."
+    error_color="\033[1;91m"
+    reset_color="\033[0m"
+    printf "${error_color}%s${reset_color}\n" "$1"
+}
 
-    # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/jetson_sensors
+function PrintSuccess () # Green
+{
+    success_color="\033[1;92m"
+    reset_color="\033[0m"
+    printf "${success_color}%s${reset_color}\n" "$1"
+}
 
-    # Update
-    if [ "$PARSER_UPDATE" == "force-update" ]
-    then
-        CheckCurrentModule
-        git submodule update --init --remote --recursive --force
-        CheckRequirements
-        InstallPackages
-    elif [ "$PARSER_UPDATE" == "preserve-update" ]
-    then
-        CheckCurrentModule
-        cp codePack/$pack_name/launch/common.yaml common.yaml.tmp
-        git submodule update --init --remote --recursive --force
-        mv common.yaml.tmp codePack/$pack_name/launch/common.yaml
-        CheckRequirements
-        InstallPackages
-    fi
-
-    if [ "$PARSER_INSTALL" == "remove" ]
-    then
-        # Get current module info
-        # CheckCurrentModule
-        # Install
-        # InstallPackages
-        # Environment setting
-        # EnvSetting
-        Remove
-    elif [ "$PARSER_INSTALL" == "install" ]
-    then
-        # Save module info
-        SaveCurrentModule
-        # Install
-        CheckRequirements
-        InstallPackages
-        # Environment setting
-        EnvSetting
-    fi
+function PrintWarning () # Yellow
+{
+    warn_color="\033[1;93m"
+    reset_color="\033[0m"
+    printf "${warn_color}%s${reset_color}\n" "$1"
 }
 
 vercomp ()
@@ -144,21 +117,70 @@ vercomp ()
     return 0
 }
 
-CheckRequirements ()
+CheckParser ()
 {
-    # Check Ubuntu release
-    ubuntu_ver=$(lsb_release -r | grep Release | grep -Po '[\d.]+')
-    if [ "$ubuntu_ver" == "18.04" ]
+    # Check pwd
+    CheckTargetPath
+
+    # Check remove
+    if [ "$PARSER_REMOVE" == "TRUE" ]
     then
-        ros_distro="eloquent"
-    elif [ "$ubuntu_ver" == "20.04" ]
-    then
-        ros_distro="foxy"
-    elif [ "$ubuntu_ver" == "22.04" ]
-    then
-        ros_distro="humble"
+        Remove
     fi
 
+    # Check update
+    if [ "$PARSER_UPDATE" == "TRUE" ]
+    then
+        UpdateCodePack
+    fi
+
+    # Check install
+    if [ "$PARSER_INSTALL" == "TRUE" ]
+    then
+        if [ "$pack_name" == "auto" ]
+        then
+            CheckCurrentModule
+            if [[ $? -eq 1 ]]
+            then
+                Remove
+                return 1
+            fi
+        fi
+
+        CheckRequirements
+        InstallPackage # Return 0 if succeed
+        if [[ $? -eq 0 ]]
+        then
+            EnvSetting
+            SaveCurrentModule
+        else
+            Remove
+            return 1
+        fi
+    fi
+}
+
+# cd into $target_dir
+CheckTargetPath ()
+{
+    if [ "$PWD" == "$target_dir" ]
+    then
+        echo "In $target_dir"
+    else
+        if ls $target_dir &> /dev/null
+        then
+            cd $target_dir
+            echo "Change directory: $PWD"
+        else
+            PrintError "Target path error: $target_dir"
+            exit 1
+        fi
+    fi
+}
+
+# Check cmake version and ros2
+CheckRequirements ()
+{
     # Check cmake version
     req_cmake_ver=3.16
     install_cmake=0
@@ -191,7 +213,7 @@ CheckRequirements ()
         wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -
         if [ "$ubuntu_ver" == "18.04" ]
         then
-            sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
+            sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main' -y
         fi
         sudo apt update && sudo apt install -y cmake
     fi
@@ -208,23 +230,11 @@ CheckRequirements ()
     fi
 }
 
+# Will set $pack_name, $interface and $static_ip
 CheckCurrentModule ()
 {
     # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/jetson_sensors
+    CheckTargetPath
 
     # Check previous module setting
     if cat .modulename &> /dev/null
@@ -232,8 +242,8 @@ CheckCurrentModule ()
         pack_name=$(cat .modulename)
         echo "Found module name: $pack_name"
     else
-        echo ".modulename not found. Run install.sh and select number to install module."
-        exit 1
+        PrintError ".modulename not found. Run install.sh and select number to install module."
+        return 1
     fi
 
     if cat .moduleinterface &> /dev/null
@@ -241,8 +251,8 @@ CheckCurrentModule ()
         interface=$(cat .moduleinterface)
         echo "Found module interface: $interface"
     else
-        echo ".moduleinterface not found. Run install.sh and select number to install module."
-        exit 1
+        PrintError ".moduleinterface not found. Run install.sh and select number to install module."
+        return 1
     fi
     
     if cat .moduleip &> /dev/null
@@ -250,28 +260,17 @@ CheckCurrentModule ()
         static_ip=$(cat .moduleip)
         echo "Found module ip: $static_ip"
     else
-        echo ".moduleip not found. Run install.sh and select number to install module."
-        exit 1
+        PrintError ".moduleip not found. Run install.sh and select number to install module."
+        return 1
     fi
+    return 0
 }
 
+# Will create .modulename, .moduleinterface and .moduleip
 SaveCurrentModule ()
 {
     # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/jetson_sensors
+    CheckTargetPath
 
     # Store selected module name, interface and ip into files
     touch .modulename
@@ -282,77 +281,21 @@ SaveCurrentModule ()
     echo $static_ip > .moduleip
 }
 
-PreparePackage ()
-{
-    echo "===Prepare Packages==="
-    # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/jetson_sensors
-
-    # Check Ubuntu ver, CMake ver and ROS2 distro
-    CheckRequirements
-
-    # Network Interface Selection
-    echo "Enter network interface (default eth0):"
-    read interface
-    if [ $interface ]
-    then
-        echo "Interface: $interface"
-    else
-        interface="eth0"
-        echo "Default interface: $interface"
-    fi
-
-    # Network IP selection
-    echo "Use DHCP? (y/n):"
-    read static_ip
-    if [[ "$static_ip" == "y" || "$static_ip" == "Y" ]]
-    then
-        static_ip="NONE"
-    else
-        echo "Enter static ip (ex 192.168.3.100/16):"
-        read static_ip
-        if [ ! $static_ip ]
-        then
-            static_ip="NONE"
-        fi
-    fi
-    echo "Static IP: $static_ip"
-
-    # Save module info
-    SaveCurrentModule
-}
-
-InstallPackages ()
+# Install package from codePack to $ros2_ws_dir
+InstallPackage ()
 {
     echo "===Install Process==="
+
     # Check pwd
-    if [ "$PWD" == "$target_dir" ]
+    CheckTargetPath
+
+    # Check $pack_name available
+    if ls codePack/$pack_name &> /dev/null
     then
-        echo "In $target_dir"
+        echo "Package found: $pack_name"
     else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
+        return 1
     fi
-    # pwd in ~/jetson_sensors
 
     # Install package dependencies
     sudo chmod a+x ./codePack/$pack_name/install_dependencies.sh
@@ -367,8 +310,8 @@ InstallPackages ()
         cp run.sh run.sh.tmp
         echo "Backup run.sh: run.sh.tmp"
     fi
-    
-    # Modify run.sh by adding specific $pack_name source_env.txt and docker run process
+
+    # Modify run.sh by adding specific $pack_name and source_env.txt
     cat ./codePack/$pack_name/source_env.txt >> run.sh
     echo "cd $ros2_ws_dir" >> run.sh
     echo "source $ros2_ws_dir/install/setup.bash" >> run.sh
@@ -380,24 +323,49 @@ InstallPackages ()
     fi
     sudo chmod a+x run.sh
 
-    # Check ROS2 workspace
-    if ls $ros2_ws_dir/src &> /dev/null
+    # Preserve common.yaml under $ros2_ws_dir/src/launch if needed
+    if [ "$preserve_conf" == "TRUE" ]
     then
-        echo "Found ROS2 workspace: $ros2_ws_dir"
-    else
-        mkdir -p $ros2_ws_dir/src
-        echo "Create ROS2 workspace at $ros2_ws_dir/src"
+        if [ "$ros_distro" == "eloquent" ]
+        then
+            if ls $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml &> /dev/null
+            then
+                cp $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml common.yaml.tmp
+            else
+                preserve_conf="FALSE"
+            fi
+        else
+            if ls $ros2_ws_dir/src/$pack_name/launch/common.yaml &> /dev/null
+            then
+                cp $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml.tmp
+            else
+                preserve_conf="FALSE"
+            fi
+        fi
     fi
 
-    # Copy packages into src under ros2 workspace
-    rm -rf $ros2_ws_dir/src/$pack_name
-    rm -rf $ros2_ws_dir/src/vehicle_interfaces
-    cp -rv codePack/$pack_name $ros2_ws_dir/src
-    cp -rv codePack/vehicle_interfaces $ros2_ws_dir/src
-    rm -rf $ros2_ws_dir/run.sh && cp run.sh $ros2_ws_dir/run.sh
+    # Re-create $ros2_ws_dir/src and copy packages to $ros2_ws_dir/src
+    rm -rf $ros2_ws_dir && mkdir -p $ros2_ws_dir/src
+    cp -r codePack/$pack_name codePack/vehicle_interfaces $ros2_ws_dir/src
 
-    # Link ros2 workspace common.yaml file to ~/jetson_sensors for convenient modifying
-    rm -rf common.yaml && ln $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
+    # Preserve common.yaml under $ros2_ws_dir/src/launch if needed
+    if [ "$preserve_conf" == "TRUE" ]
+    then
+        if [ "$ros_distro" == "eloquent" ]
+        then
+            mv common.yaml.tmp $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml
+        else
+            mv common.yaml.tmp $ros2_ws_dir/src/$pack_name/launch/common.yaml
+        fi
+    fi
+
+    # Link common.yaml to $target_dir
+    if [ "$ros_distro" == "eloquent" ]
+    then
+        ln $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml common.yaml
+    else
+        ln $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
+    fi
 
     # Change directory to ROS2 workspace
     cd $ros2_ws_dir
@@ -405,17 +373,20 @@ InstallPackages ()
 
     # Install package
     source /opt/ros/$ros_distro/setup.bash
-    colcon build --packages-select $pack_name vehicle_interfaces --symlink-install
+    colcon build --symlink-install
+    return 0
 }
 
+# Create ros2_startup.desktop under /etc/xdg/autostart
 EnvSetting ()
 {
     echo "===Environment Setting==="
+
     # Create ros2_startup.desktop file
     rm -rf ros2_startup.desktop.tmp && touch ros2_startup.desktop.tmp
     echo "[Desktop Entry]" >> ros2_startup.desktop.tmp
     echo "Type=Application" >> ros2_startup.desktop.tmp
-    echo "Exec=gnome-terminal --command '$ros2_ws_dir/run.sh $interface'" >> ros2_startup.desktop.tmp
+    echo "Exec=gnome-terminal --command '$target_dir/run.sh $interface'" >> ros2_startup.desktop.tmp
     echo "Hidden=false" >> ros2_startup.desktop.tmp
     echo "NoDisplay=false" >> ros2_startup.desktop.tmp
     echo "X-GNOME-Autostart-enabled=true" >> ros2_startup.desktop.tmp
@@ -429,9 +400,14 @@ EnvSetting ()
     rm -rf ros2_startup.desktop.tmp
 }
 
+# Update codePack
 UpdateCodePack ()
 {
     echo "===Update Process==="
+
+    # Check pwd
+    CheckTargetPath
+
     # Check Internet Connection
     printf "%s" "Internet connecting..."
     while ! ping -w 1 -c 1 -n 168.95.1.1 &> /dev/null
@@ -440,28 +416,12 @@ UpdateCodePack ()
     done
     printf "\n%s\n" "Internet connected."
 
-    # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "jetson_sensors path error. Please copy jetson_sensors directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/jetson_sensors
-
     # Check git
     if [ -x "$(command -v git)" ]; then
         echo "Found git." && git --version
     else
         echo "No git. Installing git..."
-        # sudo apt install git -y
+        sudo apt install git -y
     fi
 
     # Check git control
@@ -469,58 +429,24 @@ UpdateCodePack ()
     then
         echo "git control checked."
     else
-        echo "git control not found. \
+        PrintError "git control not found. \
     Delete jetson_sensors directory and run \
     'cd ~ && git clone https://github.com/davidweitaiwan/RV-1.0-jetson_sensors-install.git jetson_sensors' \
     to grab git controlled directory."
-        exit 1
-    fi
-
-    # Ask if preserve common.yaml file
-    echo "Preserve current common.yaml file ?(y/n):"
-    read selectNum
-    if [ "$selectNum" == "y" ]
-    then
-        # Check previous module setting
-        if cat .modulename &> /dev/null
-        then
-            pack_name=$(cat .modulename)
-            cp $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml.tmp
-        else
-            echo ".modulename not found. common.yaml will not preserved."
-            selectNum="n"
-        fi
+        return 1
     fi
 
     # Update submodules
     git submodule update --remote --recursive --force
-
-    # Recovering common.yaml
-    if [ "$selectNum" == "y" ]
-    then
-        mv common.yaml.tmp codePack/$pack_name/launch/common.yaml
-        echo "common.yaml recovered."
-    fi
 }
 
+# Remove common.yaml, .tmp files, $ros2_ws_dir and /etc/xdg/autostart/ros2_startup.desktop
 Remove ()
 {
     echo "===Remove Process==="
+
     # Check pwd
-    if [ "$PWD" == "$target_dir" ]
-    then
-        echo "In $target_dir"
-    else
-        if ls $target_dir &> /dev/null
-        then
-            cd $target_dir
-            echo "Change directory: $PWD"
-        else
-            echo "ros2_docker path error. Please copy ros2_docker directory under $HOME"
-            exit 1
-        fi
-    fi
-    # pwd in ~/ros2_docker
+    CheckTargetPath
     
     # Target files
     rm -rf common.yaml
@@ -533,51 +459,130 @@ Remove ()
         mv run.sh.tmp run.sh
         echo "run.sh recovered"
     fi
+
+    # ROS2 workspace
+    rm -rf $ros2_ws_dir
     
     # System files
     sudo rm -rf /etc/xdg/autostart/ros2_startup.desktop
-
-    exit 0
 }
 
-CheckParser
-if [ "$pack_name" != "NONE" ]
-then
-    exit 0
-fi
+# Manual installation
+PreparePackage ()
+{
+    echo "===Prepare Packages==="
 
-## Install Menu
-echo "################################################"
-printf "\t%s\n\n" "Jetson Sensor Package Installer"
-echo "1) ZED camera"
-echo "u) Update module (git control required)"
-echo "q) Exit"
-echo "################################################"
-echo "Enter number for module installation. Enter 'u' for module update or 'q' to exit:"
-read selectNum
+    # Check pwd
+    CheckTargetPath
 
-if [ "$selectNum" == "1" ]
+    ## Install Menu
+    echo "################################################"
+    printf "\t%s\n\n" "Jetson Sensor Package Installer"
+    echo "1) ZED camera"
+    echo "u) Update package (git control required)"
+    echo "r) Remove package"
+    echo "q) Exit"
+    echo "################################################"
+    read -p "Enter number for module installation. Enter 'u' for package update, 'r' for package removal or 'q' to exit:" selectNum
+
+    if [ "$selectNum" == "q" ]
+    then
+        return 0
+    elif [ "$selectNum" == "r" ]
+    then
+        Remove
+        return 0
+    elif [ "$selectNum" == "u" ]
+    then
+        CheckCurrentModule
+        if [[ $? -eq 1 ]]
+        then
+            PrintError "[PreparePackage] CheckCurrentModule failed. Exiting..."
+            return 1
+        fi
+        UpdateCodePack
+        
+        # Check Ubuntu ver, CMake ver and ROS2 distro
+        CheckRequirements
+        InstallPackage
+        if [[ $? -eq 0 ]]
+        then
+            EnvSetting
+            SaveCurrentModule
+        else
+            Remove
+            return 1
+        fi
+    elif [ "$selectNum" == "1" ]
+    then
+        echo "[PreparePackage] Install ZED camera module..."
+        pack_name="cpp_zedcam"
+    else
+        PrintError "[PreparePackage] Unknown input number. Exiting..."
+        return 1
+    fi
+
+    # Check Ubuntu ver, CMake ver and ROS2 distro
+    CheckRequirements
+
+    # Network Interface Selection
+    read -p "Enter network interface (default eth0):" interface
+    if [ $interface ]
+    then
+        echo "Interface: $interface"
+    else
+        interface="eth0"
+        echo "Default interface: $interface"
+    fi
+
+    # Network IP selection
+    read -p "Use DHCP? (y/n):" static_ip
+    if [[ "$static_ip" != "n" && "$static_ip" != "N" ]]
+    then
+        static_ip="NONE"
+    else
+        read -p "Enter static ip (ex 192.168.3.100/16):" static_ip
+        if [ ! $static_ip ]
+        then
+            static_ip="NONE"
+        fi
+    fi
+    echo "Static IP: $static_ip"
+
+    # Install package
+    InstallPackage
+    if [[ $? -eq 0 ]]
+    then
+        EnvSetting
+        SaveCurrentModule
+    else
+        Remove
+        return 1
+    fi
+}
+
+## Entry
+################################################################
+
+# Check Ubuntu release
+ubuntu_ver=$(lsb_release -r | grep Release | grep -Po '[\d.]+')
+if [ "$ubuntu_ver" == "18.04" ]
 then
-    echo "Install ZED camera module..."
-    pack_name="cpp_zedcam"
-elif [ "$selectNum" == "u" ]
+    ros_distro="eloquent"
+elif [ "$ubuntu_ver" == "20.04" ]
 then
-    echo "Updating module..."
-    pack_name="NONE"
-    UpdateCodePack
-    CheckCurrentModule
-    InstallPackages
-    pack_name="NONE"
+    ros_distro="foxy"
+elif [ "$ubuntu_ver" == "22.04" ]
+then
+    ros_distro="humble"
 else
-    pack_name="NONE"
+    PrintError "Ubuntu release version not supported: $ubuntu_ver"
+    exit 1
 fi
 
-if [ "$pack_name" != "NONE" ]
+if [ "$PARSER_USED" == "TRUE" ]
 then
-    echo "Preparing package..."
+    CheckParser
+else
     PreparePackage
-    InstallPackages
-    EnvSetting
-else
-    echo "Process ended."
 fi
