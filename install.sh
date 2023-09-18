@@ -580,9 +580,20 @@ else
     exit 1
 fi
 
+entry_pwd="$PWD"
+
 if [ "$PARSER_USED" == "TRUE" ]
 then
     CheckParser
 else
     PreparePackage
+fi
+
+if [ "$PWD" != "$entry_pwd" ]
+then
+    if ls $entry_pwd &> /dev/null
+    then
+        cd $entry_pwd
+        echo "Change directory: $PWD"
+    fi
 fi
