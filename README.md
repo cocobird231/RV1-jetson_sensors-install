@@ -2,9 +2,9 @@
 
 Web version: https://hackmd.io/@cocobird231/BkmIsPa5n
 
-*`Updated: 2023/09/13`*
+*`Updated: 2023/09/18`*
 
-The package installer for sensors which depends on NVIDIA Jetson.
+The package installer for sensor depends on NVIDIA Jetson.
 
 **System requirements**:
 - OS: Ubuntu 18.04 or higher (64-bit recommend)
@@ -35,11 +35,7 @@ The `static_ip` option not support yet. Always set to `dhcp` or ignore it.
 :::
 1. Run the script `install.sh` under `jetson_sensors` to install package for selected module.
     ```bash
-    cd ~/jetson_sensors
-    ```
-    
-    ```bash
-    . install.sh
+    . ~/jetson_sensors/install.sh
     ```
     Select a number for module installation
 2. Determine the network interface and IP for program to execute.
@@ -106,6 +102,7 @@ Modify the settings under `$HOME/jetson_sensors/common.yaml` and reboot device.
 The `install.sh` now supported parser installation. (2023/07/25)
 :::
 The package installation, updating and removal functions can be done by adding some arguments while running `install.sh`.
+
 #### **Overall arguments**
 ```bash!
 . install.sh [[-i|--install] <package_name>] [--interface <network_interface>] [--ip [<static_ip>|dhcp]] [-rm|--remove] [-u|--update] [-p|--preserve]
@@ -136,6 +133,7 @@ The `--interface` determines the network interface for network detection or inte
 
 The `--ip` currently not support and will always set to `dhcp`. The `--ip` is not necessary and will be set to default `dhcp`.
 :::
+
 :::warning
 
 - **For Variables**
@@ -151,10 +149,10 @@ If `package_name` set to `auto`, the process will ignored `--interface` and `--i
 
 The `network_interface` is necessary if `--interface` set. The `network_interface` do not have any valid check mechanism, be careful of the mistyping.
 
-The `static_ip` is necessary if `--ip` set. The `static_ip` currently not support.
+The `static_ip` is necessary if `--ip` not set to `dhcp`. The `static_ip` currently not support.
 :::
 
-#### **Usages**
+#### **Examples**
 - Install package
     ```bash!
     . install.sh -i <package_name> [--interface <network_interface>] [--ip [<static_ip> | dhcp]]
