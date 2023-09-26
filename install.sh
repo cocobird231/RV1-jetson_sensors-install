@@ -297,6 +297,12 @@ InstallPackage ()
         return 1
     fi
 
+    # Install vehicle_interface dependencies
+    if cat codePack/vehicle_interfaces/requirements_apt.txt &> /dev/null
+    then
+        xargs sudo apt install -y < codePack/vehicle_interfaces/requirements_apt.txt
+    fi
+
     # Install package dependencies
     sudo chmod a+x ./codePack/$pack_name/install_dependencies.sh
     . ./codePack/$pack_name/install_dependencies.sh
@@ -360,6 +366,7 @@ InstallPackage ()
     fi
 
     # Link common.yaml to $target_dir
+    rm -rf common.yaml
     if [ "$ros_distro" == "eloquent" ]
     then
         ln $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml common.yaml
