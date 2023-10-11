@@ -6,6 +6,7 @@ PARSER_USED="FALSE" # Is parser used
 PARSER_REMOVE="FALSE" # Remove current program and settings
 PARSER_UPDATE="FALSE" # Update codePack, no install
 PARSER_INSTALL="FALSE" # Install program from codePack
+PARSER_UPGRADE="FALSE" # Upgrade installer
 
 preserve_conf="FALSE" # Preserve current common.yaml file while installing
 pack_name="NONE"
@@ -53,6 +54,11 @@ while [[ $# -gt 0 ]]; do
             static_ip="$2"
             shift # past argument
             shift # past value
+            ;;
+        --upgrade)
+            PARSER_UPGRADE="TRUE"
+            PARSER_USED="TRUE"
+            shift # past argument
             ;;
         -*|--*)
             echo "Unknown option $1"
@@ -126,6 +132,28 @@ CheckParser ()
     if [ "$PARSER_REMOVE" == "TRUE" ]
     then
         Remove
+    fi
+
+    # Check deployment upgrade
+    if [ "$PARSER_UPGRADE" == "TRUE" ]
+    then
+        bk_flag="FALSE"
+        CheckCurrentModule
+        if [[ $? -eq 0 ]]
+        then
+            bk_flag="TRUE"
+            mkdir -p ~/.ros2.tmp
+            mv .module* ~/.ros2.tmp
+            mv common.yaml ~/.ros2.tmp
+        fi
+        cd $HOME
+        sudo rm -rf "$target_dir"
+        curl -fsSL ftp://61.220.23.239/rv-11/get-jetson-sensors-install.sh | bash
+        if [ "$bk_flag" == "TRUE" ]
+        then
+            mv ~/.ros2.tmp/* "$target_dir"
+            sudo rm -rf ~/.ros2.tmp
+        fi
     fi
 
     # Check update
