@@ -397,9 +397,9 @@ InstallPackage ()
     rm -rf common.yaml
     if [ "$ros_distro" == "eloquent" ]
     then
-        ln $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml common.yaml
+        ln -s $ros2_ws_dir/src/$pack_name/launch/common_eloquent.yaml common.yaml
     else
-        ln $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
+        ln -s $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
     fi
 
     # Change directory to ROS2 workspace
