@@ -8,7 +8,7 @@ PARSER_UPDATE="FALSE" # Update codePack, no install
 PARSER_INSTALL="FALSE" # Install program from codePack
 PARSER_UPGRADE="FALSE" # Upgrade installer
 
-preserve_conf="FALSE" # Preserve current common.yaml file while installing
+preserve_conf="FALSE" # Preserve current common.yaml and service.json file while installing
 pack_name="NONE"
 static_ip="NONE"
 interface="eth0"
@@ -18,7 +18,7 @@ interface="eth0"
 # 1.    PARSER_REMOVE       remove program under ros2_ws and environment settings
 # 2.    PARSER_UPDATE       update codePack without installation
 # 3.    PARSER_INSTALL      install program from codePack to ros2_ws
-#       --preserve          preserve common.yaml under ros2_ws while installing
+#       --preserve          preserve common.yaml and service.json under ros2_ws while installing
 #       --interface         set network interface
 #       --ip                set static ip (not supported)
 
@@ -145,6 +145,7 @@ CheckParser ()
             mkdir -p ~/.ros2.tmp
             mv .module* ~/.ros2.tmp
             mv common.yaml ~/.ros2.tmp
+            mv service.json ~/.ros2.tmp
         fi
         cd $HOME
         sudo rm -rf "$target_dir"
@@ -282,7 +283,7 @@ CheckCurrentModule ()
         PrintError ".moduleinterface not found. Run install.sh and select number to install module."
         return 1
     fi
-    
+
     if cat .moduleip &> /dev/null
     then
         static_ip=$(cat .moduleip)
@@ -357,7 +358,7 @@ InstallPackage ()
     fi
     sudo chmod a+x run.sh
 
-    # Preserve common.yaml under $ros2_ws_dir/src/launch if needed
+    # Preserve common.yaml and service.json under $ros2_ws_dir/src/launch if needed
     if [ "$preserve_conf" == "TRUE" ]
     then
         if [ "$ros_distro" == "eloquent" ]
@@ -376,13 +377,14 @@ InstallPackage ()
                 preserve_conf="FALSE"
             fi
         fi
+        cp $ros2_ws_dir/src/$pack_name/launch/service.json service.json.tmp
     fi
 
     # Re-create $ros2_ws_dir/src and copy packages to $ros2_ws_dir/src
     rm -rf $ros2_ws_dir && mkdir -p $ros2_ws_dir/src
     cp -r codePack/$pack_name codePack/vehicle_interfaces $ros2_ws_dir/src
 
-    # Preserve common.yaml under $ros2_ws_dir/src/launch if needed
+    # Preserve common.yaml and service.json under $ros2_ws_dir/src/launch if needed
     if [ "$preserve_conf" == "TRUE" ]
     then
         if [ "$ros_distro" == "eloquent" ]
@@ -391,9 +393,10 @@ InstallPackage ()
         else
             mv common.yaml.tmp $ros2_ws_dir/src/$pack_name/launch/common.yaml
         fi
+        mv service.json.tmp $ros2_ws_dir/src/$pack_name/launch/service.json
     fi
 
-    # Link common.yaml to $target_dir
+    # Link common.yaml and service.json to $target_dir
     rm -rf common.yaml
     if [ "$ros_distro" == "eloquent" ]
     then
@@ -401,6 +404,9 @@ InstallPackage ()
     else
         ln -s $ros2_ws_dir/src/$pack_name/launch/common.yaml common.yaml
     fi
+
+    rm -rf service.json
+    ln -s $ros2_ws_dir/src/$pack_name/launch/service.json service.json
 
     # Change directory to ROS2 workspace
     cd $ros2_ws_dir
@@ -475,19 +481,20 @@ UpdateCodePack ()
     git submodule update --remote --recursive --force
 }
 
-# Remove common.yaml, .tmp files, $ros2_ws_dir and /etc/xdg/autostart/ros2_startup.desktop
+# Remove common.yaml, service.json, .tmp files, $ros2_ws_dir and /etc/xdg/autostart/ros2_startup.desktop
 Remove ()
 {
     echo "===Remove Process==="
 
     # Check pwd
     CheckTargetPath
-    
+
     # Target files
     rm -rf common.yaml
+    rm -rf service.json
     rm -rf ros2_startup.desktop.tmp
     rm -rf .module*
-    
+
     # Recover run.sh if .tmp exist
     if cat run.sh.tmp &> /dev/null
     then
@@ -497,7 +504,7 @@ Remove ()
 
     # ROS2 workspace
     rm -rf $ros2_ws_dir
-    
+
     # System files
     sudo rm -rf /etc/xdg/autostart/ros2_startup.desktop
 }
@@ -536,7 +543,7 @@ PreparePackage ()
             return 1
         fi
         UpdateCodePack
-        
+
         # Check Ubuntu ver, CMake ver and ROS2 distro
         CheckRequirements
         InstallPackage
