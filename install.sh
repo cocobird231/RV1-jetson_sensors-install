@@ -414,7 +414,9 @@ InstallPackage ()
 
     # Install package
     source /opt/ros/$ros_distro/setup.bash
-    colcon build --symlink-install
+    colcon build --packages-select vehicle_interfaces --symlink-install
+    colcon build --packages-select vehicle_interfaces --symlink-install --cmake-args -DPYLIB=TRUE
+    colcon build $pack_name --symlink-install
     return 0
 }
 
