@@ -2,7 +2,7 @@
 
 Web version: https://hackmd.io/@cocobird231/BkmIsPa5n
 
-*`Updated: 2023/09/18`*
+*`Updated: 2024/04/23`*
 
 The package installer for sensor depends on NVIDIA Jetson.
 
@@ -12,21 +12,16 @@ The package installer for sensor depends on NVIDIA Jetson.
 
 **Now supported sensor types**:
 - ZED stereo camera (the ZED and ZED X were tested)
+    - The ZED SDK 4.1 will be automatically downloaded and installed.
 
 ---
 ## Usage
 
 ### For Newly Install (No `jetson_sensors` Under Home Path)
-Run the pre-install script `get-jetson-sensors-install.sh` to grab git controlled directory (renamed as `jetson_sensors`). **Make sure Jetson is connected to the internet before installation start.** There are **two** ways to run the pre-install script: 
-
-1. **Run the pre-install script `get-jetson-sensors-install.sh` manually**
-    ```bash
-    . get-jetson-sensors-install.sh
-    ```
-2. **Run the pre-install script using `curl`**
-    ```bash
-    curl -fsSL ftp://61.220.23.239/rv-11/get-jetson-sensors-install.sh | bash
-    ```
+Run the pre-install script `get-jetson-sensors-install.sh` to grab git controlled directory (renamed as `jetson_sensors`). **Make sure Jetson is connected to the internet before installation start.**
+```bash
+curl -fsSL ftp://61.220.23.239/rv-11/get-jetson-sensors-install.sh | bash
+```
 The new directory `jetson_sensors` will be created under `$HOME`.
 
 ### Module Installation
@@ -53,7 +48,8 @@ The `static_ip` option not support yet. Always set to `dhcp` or ignore it.
         - `.moduleinterface` (interface setting)
         - `.modulename` (IP setting)
         - `ros2_startup.desktop.tmp` (may be deleted)
-        - `common.yaml` (linked from module package under ROS2 workspace)
+        - `common.yaml` (linked to module package under ROS2 workspace)
+        - `service.json` (linked to module package under ROS2 workspace)
     - Under `$HOME/ros2_ws`
         - `build`
         - `install`
