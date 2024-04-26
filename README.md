@@ -2,7 +2,7 @@
 
 Web version: https://hackmd.io/@cocobird231/BkmIsPa5n
 
-*`Updated: 2024/04/23`*
+*`Updated: 2024/04/26`*
 
 The package installer for sensor depends on NVIDIA Jetson.
 
@@ -20,7 +20,7 @@ The package installer for sensor depends on NVIDIA Jetson.
 ### For Newly Install (No `jetson_sensors` Under Home Path)
 Run the pre-install script `get-jetson-sensors-install.sh` to grab git controlled directory (renamed as `jetson_sensors`). **Make sure Jetson is connected to the internet before installation start.**
 ```bash
-curl -fsSL ftp://61.220.23.239/rv-11/get-jetson-sensors-install.sh | bash
+curl -fsSL ftp://61.220.23.239/rv-12/get-jetson-sensors-install.sh | bash
 ```
 The new directory `jetson_sensors` will be created under `$HOME`.
 

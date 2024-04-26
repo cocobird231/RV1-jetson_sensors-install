@@ -149,7 +149,7 @@ CheckParser ()
         fi
         cd $HOME
         sudo rm -rf "$target_dir"
-        curl -fsSL ftp://61.220.23.239/rv-11/get-jetson-sensors-install.sh | bash
+        curl -fsSL ftp://61.220.23.239/rv-12/get-jetson-sensors-install.sh | bash
         if [ "$bk_flag" == "TRUE" ]
         then
             mv ~/.ros2.tmp/* "$target_dir"
@@ -480,7 +480,11 @@ UpdateCodePack ()
     fi
 
     # Update submodules
-    git submodule update --remote --recursive --force
+    git submodule update --init --remote --recursive --force
+    git --git-dir=codePack/.git checkout v1.2
+    git --git-dir=codePack/.git pull
+    git --git-dir=codePack/vehicle_interfaces/.git checkout v1.2
+    git --git-dir=codePack/vehicle_interfaces/.git pull
 }
 
 # Remove common.yaml, service.json, .tmp files, $ros2_ws_dir and /etc/xdg/autostart/ros2_startup.desktop
